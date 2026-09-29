@@ -114,6 +114,13 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
         platform.auxiliaryStorage = auxStorage
         platform.hardwareModel = hwModel
 
+        // FairPlay and strong identity. Without them the guest gets neither
+        // the paravirtual FairPlay device (AvpFairPlayDriver never loads) nor
+        // the AppleVirtualPlatformIdentity device, akd cannot provision
+        // anisette, and Apple Account sign-in fails with "Verification
+        // Failed". See Research/Guest/apple_account_sign_in.md.
+        Self.setPlatformIdentity(platform, enabled: true)
+
         // Set NVRAM boot-args to enable serial output
         let bootArgs = "serial=3 debug=0x104c04"
         if let bootArgsData = bootArgs.data(using: .utf8) {
@@ -273,9 +280,17 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
             print("[vphone] SEP coprocessor enabled (storage: \(options.sepStorageURL.path))")
         }
 
-        // Validate
-        try config.validate()
+        // Validate. A host that refuses FairPlay or strong identity for this
+        // hardware model still gets a VM, just without Apple Account sign-in.
+        do {
+            try config.validate()
+        } catch where Self.isPlatformIdentityEnabled(config.platform) {
+            print("[vphone] Warning: FairPlay and strong identity refused (\(error)); continuing without them")
+            Self.setPlatformIdentity(config.platform, enabled: false)
+            try config.validate()
+        }
         print("[vphone] Configuration validated")
+        print("[vphone] FairPlay: \(Self.isFairPlayEnabled(config.platform) ? "on" : "off"), strong identity: \(Self.isStrongIdentityEnabled(config.platform) ? "on" : "off")")
 
         virtualMachine = VZVirtualMachine(configuration: config)
         super.init()
@@ -291,6 +306,29 @@ class VPhoneVirtualMachine: NSObject, VZVirtualMachineDelegate {
                 FileHandle.standardOutput.write(data)
             }
         }
+    }
+
+    // MARK: - Platform Identity
+
+    /// `_setFairPlayEnabled:` and `_setStrongIdentityEnabled:` on
+    /// `VZMacPlatformConfiguration`. They back the XPC service's
+    /// `fairplay_enabled` (AvpFairPlayDevice) and `strong_identity_enabled`
+    /// (AvpStrongIdentity, `com.apple.AppleVirtualPlatform.Identity.Virtio`).
+    private static func setPlatformIdentity(_ platform: VZPlatformConfiguration, enabled: Bool) {
+        Dynamic(platform)._setFairPlayEnabled(enabled)
+        Dynamic(platform)._setStrongIdentityEnabled(enabled)
+    }
+
+    private static func isFairPlayEnabled(_ platform: VZPlatformConfiguration) -> Bool {
+        Dynamic(platform)._isFairPlayEnabled.asBool ?? false
+    }
+
+    private static func isStrongIdentityEnabled(_ platform: VZPlatformConfiguration) -> Bool {
+        Dynamic(platform)._isStrongIdentityEnabled.asBool ?? false
+    }
+
+    private static func isPlatformIdentityEnabled(_ platform: VZPlatformConfiguration) -> Bool {
+        isFairPlayEnabled(platform) || isStrongIdentityEnabled(platform)
     }
 
     // MARK: - Bundle Files
