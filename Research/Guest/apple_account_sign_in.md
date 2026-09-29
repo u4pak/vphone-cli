@@ -2,8 +2,9 @@
 
 **Status (2026-09-29):** sign-in fails on `17,3_27.0_24A435` (27.0 RC) with
 "Verification Failed — An unknown error occurred". `vphone-vm` now asks
-Virtualization for FairPlay and strong identity; whether that is enough is
-**not yet validated on-device**.
+Virtualization for FairPlay and strong identity. Validated on-device: both
+devices attach and anisette provisioning now succeeds, but sign-in still fails
+one step later. See "After FairPlay and strong identity" below.
 
 ## What fails
 
@@ -76,6 +77,30 @@ them, it logs a warning and starts the VM without them rather than failing.
 3. Capture `logs.syslog` for `akd` during sign-in and compare against the chain
    above: provisioning should now pass step 4. If it still stops at step 3, the
    missing UCRT from the activation patch is the next blocker.
+
+## After FairPlay and strong identity
+
+Same guest, relaunched with both enabled:
+
+* The registry has `AvpFairPlayDriver` (4 `AvpFairPlayUserClient`s) and
+  `AppleVirtualPlatformIdentityVirtioMessenger` →
+  `AppleVirtualPlatformIdentityService`.
+* akd: `Anisette succeeded, but BAA failed. This is not expected. Not blocking`.
+  The `-45059` / `-43004` / 503 chain is gone. BAA still fails:
+  `UCRT is unavailable` (`MobileActivation -4`).
+* `fetchAuthMode` gets HTTP 440 (`AKAuthenticationServerError 440`), and akd
+  carries on.
+* akd waits 30 s for an APNs token and gets none
+  (`APS connection … still returned nil for -publicToken!`,
+  `Skipping piggybacking, missing push token`), then carries on.
+* The SRP init request returns HTTP 200, but the body has no selected protocol:
+  `AppleIDAuthSupport: setError: 2:selected protocol key missing`, then
+  `AKAuthenticationServerError -3000076`. That is the sign-in failure now. The
+  server's own status message is `<private>` in the log.
+
+Next candidates, in order: read the server's message with private log data
+enabled; let a throwaway VM activate for real (block
+`mobileactivationd.should_hactivate`) so it can get a UCRT; APNs.
 
 ## If this is not enough
 
