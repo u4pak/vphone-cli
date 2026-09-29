@@ -26,7 +26,6 @@ enum VPhoneCustomFirmwareDyldSharedCacheVerbs {
     static var all: [ParsableCommand.Type] {
         [
             VPhoneCustomFirmwarePatchHypervisorVirtualMachineDyldSharedCacheCommand.self,
-            VPhoneCustomFirmwarePatchAccountHypervisorMaskCommand.self,
             VPhoneCustomFirmwarePatchIOMFBSwapEndCommand.self,
             VPhoneCustomFirmwarePatchIOMFBForceKernCommand.self,
             VPhoneCustomFirmwarePatchDyldSharedCacheMaxSlideCommand.self,
@@ -41,7 +40,7 @@ enum VPhoneCustomFirmwareDyldSharedCacheVerbs {
     ///
     /// The DSC library defaults some patchers to stderr and some to stdout; the
     /// Python put all of it on stdout, and an install log is read as one stream,
-    /// so every verb is pinned here.
+    /// so all eight verbs are pinned here.
     static let stdout: @Sendable (String) -> Void = { print($0) }
 
     /// `int(value, 0)`, which is how `cfw.py` reads `--target-size 0x560`.
@@ -105,45 +104,6 @@ struct VPhoneCustomFirmwarePatchHypervisorVirtualMachineDyldSharedCacheCommand: 
 
     func run() throws {
         try DyldSharedCacheHypervisorVirtualMachinePatcher.patch(
-            chunksDirectory: chunksDirectory,
-            dryRun: dryRun,
-            log: VPhoneCustomFirmwareDyldSharedCacheVerbs.stdout,
-        )
-    }
-}
-
-// MARK: - patch-hv-vmm-account-dsc
-
-struct VPhoneCustomFirmwarePatchAccountHypervisorMaskCommand: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "patch-hv-vmm-account-dsc",
-        abstract: "Hide kern.hv_vmm_present from the Apple Account and store dylibs only",
-        discussion: """
-        AuthKit, AAAFoundation, CoreCDP, DeviceIdentity and the other identity
-        dylibs cache "am I in a VM?" and report it during Apple Account sign-in,
-        which then fails with "Verification Failed". This rewrites their copy of
-        the sysctl name to `Xern.hv_vmm_present`, which never resolves, so they
-        read ENOENT and conclude the device is not a VM. Every other reader —
-        bluetoothd, graphics, ML — keeps the real answer, and the kernel OID is
-        not renamed.
-
-        Needs no kernel patch and is safe alongside `patch-hv-vmm-dsc`. Every
-        page written is re-attested; a re-run is a no-op that still repairs
-        attestation.
-        """,
-    )
-
-    @Argument(
-        help: "The guest's /System/Library/Caches/com.apple.dyld directory",
-        transform: URL.init(fileURLWithPath:),
-    )
-    var chunksDirectory: URL
-
-    @Flag(name: .customLong("dry-run"), help: "Report every site and write nothing")
-    var dryRun = false
-
-    func run() throws {
-        try DyldSharedCacheAccountHypervisorMaskPatcher.patch(
             chunksDirectory: chunksDirectory,
             dryRun: dryRun,
             log: VPhoneCustomFirmwareDyldSharedCacheVerbs.stdout,

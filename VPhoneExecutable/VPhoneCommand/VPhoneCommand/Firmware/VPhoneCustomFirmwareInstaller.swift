@@ -446,11 +446,6 @@ struct VPhoneCustomFirmwareInstaller {
         if on("hv_vmm_dsc") {
             try patch("patch-hv-vmm-dsc", [dsc])
         }
-        // Independent of the pair above: it needs no kernel rename, and its
-        // mangled name never resolves, so it means the same with or without it.
-        if on(FirmwareGuestIdentityPatchSet.accountHypervisorMask) {
-            try patch("patch-hv-vmm-account-dsc", [dsc])
-        }
         if on("camera_dsc") {
             try patch("patch-camera-dsc", [dsc, (dsc as NSString).appendingPathComponent("dyld_shared_cache_arm64e")])
         }

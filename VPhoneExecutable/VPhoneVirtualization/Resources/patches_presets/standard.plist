@@ -16,10 +16,6 @@
   EXP variant; the camera does not need them, and with the concealment they left
   guests without location (issue #438).
 
-  hv_vmm_account_dsc is not part of the concealment and stays on: it hides the
-  sysctl from the Apple Account and store dylibs only, so sign-in does not see a
-  VM, without renaming the OID that bluetoothd reads.
-
   Each patch's own version gate still decides whether it lands on this pairing of
   iPhone base and cloudOS.
 

@@ -6,8 +6,8 @@
 // `com.vphone.patchset.kernel.hypervisor` and the device tree's identity and camera
 // nodes: on their own, each half leaves the guest inconsistent with itself.
 //
-// Everything here came from the former EXP variant except `hv_vmm_account_dsc`,
-// the narrow Apple Account mask, which is on in `standard` alongside `camera_dsc`. `hv_vmm_dsc` is off for exactly the reason its kernel half is — see
+// Everything here came from the former EXP variant. Only `camera_dsc` is on in
+// `standard`. `hv_vmm_dsc` is off for exactly the reason its kernel half is — see
 // `FirmwareKernelHypervisorPatchSet` for what a 26.4 guest does when the OID is
 // renamed. The watchdogd patch only matters once the hypervisor is hidden, so it
 // moves with that pair (`FirmwarePatchSetCatalog.hypervisorConcealmentPatches`).
@@ -24,10 +24,6 @@ public enum FirmwareGuestIdentityPatchSet {
     /// Preboot device tree, run by `cfw install`.
     public static let prebootDeviceTreeIdentity = "preboot_devicetree.identity"
 
-    /// Hides `kern.hv_vmm_present` from the Apple Account dylibs only, run by
-    /// `cfw install` as `patch-hv-vmm-account-dsc`.
-    public static let accountHypervisorMask = "hv_vmm_account_dsc"
-
     public static let manifest = VPhonePatchSetManifest(
         identifier: identifier,
         name: "Guest Identity",
@@ -40,17 +36,6 @@ public enum FirmwareGuestIdentityPatchSet {
                 Mangles the hv_vmm_present references in the shared cache, so a userland check \
                 finds nothing where the kernel set renamed the sysctl. Off by default, and \
                 pointless without kernelcache_exp.hv_vmm: enable the two together or neither.
-                """,
-                target: .dyldSharedCache,
-            ),
-            VPhonePatchDeclaration(
-                identifier: accountHypervisorMask,
-                title: "Apple Account hypervisor mask",
-                summary: """
-                Hides the hypervisor from AuthKit, AAAFoundation, CoreCDP, DeviceIdentity and \
-                the other sign-in, push and store dylibs, which otherwise report a VM during \
-                Apple Account sign-in and fail with "Verification Failed". Everything else, \
-                bluetoothd included, keeps the real answer, and it needs no kernel rename.
                 """,
                 target: .dyldSharedCache,
             ),

@@ -201,31 +201,6 @@ struct FirmwarePatchSetCatalogTests {
     }
 
     @Test
-    func `The Apple Account hypervisor mask is on in every shipped preset`() throws {
-        // It is not part of the concealment: it needs no kernel rename, leaves
-        // bluetoothd alone, and is what lets Apple Account sign-in work on a
-        // standard VM. See DyldSharedCacheAccountHypervisorMaskPatcher.
-        let identifier = FirmwareGuestIdentityPatchSet.accountHypervisorMask
-        let declaration = try #require(
-            FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == identifier },
-        )
-        #expect(!declaration.bootEssential)
-        #expect(!FirmwarePatchSetCatalog.manualOnlyPatches.contains(identifier))
-        #expect(!FirmwarePatchSetCatalog.hypervisorConcealmentPatches.contains(identifier))
-        for base in ["18.6.2", "26.4", "27.0"] {
-            for preset in FirmwarePatchSetCatalog.builtInPresets {
-                let plan = try VPhonePatchPlan.resolve(
-                    preset: preset,
-                    patchSets: FirmwarePatchSetCatalog.bundled,
-                    iOSBase: VPhoneVersion(base),
-                    cloudOS: VPhoneVersion("26.4"),
-                )
-                #expect(plan.isEnabled(identifier), "\(preset.identifier) on \(base) left it off")
-            }
-        }
-    }
-
-    @Test
     func `Every set's manifest survives a plist round trip`() throws {
         for manifest in FirmwarePatchSetCatalog.bundled {
             let decoded = try VPhonePatchSetManifest.decode(manifest.encodedPlist())

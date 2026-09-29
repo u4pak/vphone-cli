@@ -16,15 +16,6 @@ because on a freshly restored 26.4 guest they mean a permanent black screen. The
 reason is `bluetoothd`, and it is written out under B.3 below. What follows
 describes the patch as it works when it *is* selected.
 
-**What `standard` does instead (2026-09-29): `hv_vmm_account_dsc`.** The identity
-readers in the table below (AuthKit, AAAFoundation, CoreCDP, DeviceIdentity,
-DeviceCheckInternal, ApplePushService, IDSFoundation, AppStoreUtilities) get byte 0
-of their cstring mangled to `Xern.hv_vmm_present`. That name never resolves, with
-or without the kernel rename, so those eight cache 0 and nobody else changes —
-including bluetoothd. It was added because Apple Account sign-in fails with
-"Verification Failed" on a 27.0 RC `standard` guest; see row 17 of
-`Research/0_binary_patch_comparison.md`. Not yet validated on-device.
-
 The patch pipeline takes a **kernel-rename + user-mode-blacklist**
 approach. Summary:
 
