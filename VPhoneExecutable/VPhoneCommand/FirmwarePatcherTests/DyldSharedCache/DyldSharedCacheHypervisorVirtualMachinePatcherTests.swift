@@ -740,3 +740,96 @@ struct DyldSharedCacheHypervisorVirtualMachineStandaloneTests {
         print("[hv_vmm] \(name): \(count) standalone cstring site(s), bytes match")
     }
 }
+
+// MARK: - The Apple Account mask
+
+/// No fixture needed: the mask's own constants, and how its list relates to the
+/// concealment's.
+@Suite
+struct DyldSharedCacheAccountHypervisorMaskConstantsTests {
+    @Test
+    func `The mask never resolves, with or without the kernel rename`() {
+        let mask = DyldSharedCacheAccountHypervisorMaskPatcher.self
+        #expect(mask.needle == DyldSharedCacheHypervisorVirtualMachinePatcher.needle)
+        #expect(mask.maskedNeedle == Data("Xern.hv_vmm_present\0".utf8))
+        #expect(mask.maskedNeedle.count == mask.needle.count)
+        let differing = zip(mask.needle, mask.maskedNeedle)
+            .enumerated()
+            .filter { $0.element.0 != $0.element.1 }
+            .map(\.offset)
+        #expect(differing == [mask.maskOffset])
+
+        // Byte 5 would give `kern.Xv_vmm_present`, the name the kernel rename
+        // creates, and an `extended` guest would read 1 through it again.
+        #expect(mask.maskedNeedle != DyldSharedCacheHypervisorVirtualMachinePatcher.mangledNeedle)
+        let namespace = Data(DyldSharedCacheHypervisorVirtualMachinePatcher.sysctlNamespace.utf8)
+        #expect(mask.maskedNeedle.prefix(namespace.count) != namespace)
+    }
+
+    @Test
+    func `Every masked dylib is one the concealment already keeps off its mangle`() {
+        let mask = DyldSharedCacheAccountHypervisorMaskPatcher.self
+        #expect(Set(mask.maskedInstallNames).count == mask.maskedInstallNames.count)
+        #expect(mask.maskedSet.isSubset(of: DyldSharedCacheHypervisorVirtualMachinePatcher.dontPatchSet))
+        // Activation works on a standard VM; the mask must not change what it sees.
+        #expect(!mask.maskedSet.contains(
+            "/System/Library/PrivateFrameworks/MobileActivation.framework/MobileActivation",
+        ))
+    }
+}
+
+@Suite(.serialized, .enabled(if: HypervisorVirtualMachineFixture.runs, HypervisorVirtualMachineFixture.skipReason))
+struct DyldSharedCacheAccountHypervisorMaskCacheTests {
+    /// On the 24A435 (iOS 27.0 RC) cache, every listed dylib carries one site,
+    /// the mask takes exactly those, re-running it is a no-op, and running the
+    /// full concealment over the result leaves them masked.
+    @Test
+    func `The mask takes the listed dylibs and nothing else`() throws {
+        _ = try #require(HypervisorVirtualMachineFixture.pristine, HypervisorVirtualMachineFixture.missing)
+        let mask = DyldSharedCacheAccountHypervisorMaskPatcher.self
+
+        // The frozen reference says each listed dylib has one site on this build.
+        for installName in mask.maskedInstallNames {
+            #expect(FrozenReference.mangledCountByInstallName[installName] == 0, "\(installName)")
+        }
+
+        let clone = try HypervisorVirtualMachineFixture.cloneCache(named: "account-mask")
+        defer { HypervisorVirtualMachineFixture.discard(clone) }
+
+        let result = try mask.patch(chunksDirectory: clone, log: nil)
+        #expect(result.masked == mask.maskedInstallNames.count)
+        #expect(result.installNamesMissing.isEmpty)
+        #expect(result.leftAlone == FrozenReference.mangledCountByInstallName.count - result.masked)
+        #expect(result.refused == 0)
+        #expect(result.isFullyAttested)
+        #expect((result.reattestation?.updated.count ?? 0) > 0)
+
+        let chunks = try DyldSharedCacheChunkSet(directory: clone)
+        var maskedSeen: Set<String> = []
+        for vma in try chunks.findStringVMAs(mask.maskedNeedle) {
+            let installName = try #require(DyldSharedCacheHypervisorVirtualMachinePatcher.classify(vma, in: chunks))
+            #expect(mask.maskedSet.contains(installName), "\(installName) was masked but is not listed")
+            maskedSeen.insert(installName)
+        }
+        #expect(maskedSeen == mask.maskedSet)
+        for vma in try chunks.findStringVMAs(mask.needle) {
+            let installName = try #require(DyldSharedCacheHypervisorVirtualMachinePatcher.classify(vma, in: chunks))
+            #expect(!mask.maskedSet.contains(installName), "\(installName) kept the original cstring")
+        }
+
+        let second = try mask.patch(chunksDirectory: clone, log: nil)
+        #expect(second.masked == 0)
+        #expect(second.alreadyMasked == result.masked)
+        #expect(second.reattestation?.updated.isEmpty == true)
+
+        // `extended` runs the concealment too. It must neither see nor touch the
+        // masked sites, and still mangle everything off its blacklist.
+        let concealment = try DyldSharedCacheHypervisorVirtualMachinePatcher.patch(chunksDirectory: clone, log: nil)
+        #expect(concealment.mangled == FrozenReference.totalMangled)
+        #expect(concealment.blacklistDrift == 0)
+        #expect(concealment.refused == 0)
+        #expect(concealment.isFullyAttested)
+        let after = try DyldSharedCacheChunkSet(directory: clone)
+        #expect(try after.findStringVMAs(mask.maskedNeedle).count == result.masked)
+    }
+}
